@@ -70,7 +70,8 @@ def show_media(paths):
     potential_viewers = [
         "feh",
         "eog",
-        "display"
+        "display",
+        "chafa"  # https://github.com/hpjansson/chafa
     ]
     for v in potential_viewers:
         viewer = shutil.which(v)
@@ -80,8 +81,20 @@ def show_media(paths):
     if not viewer:
         raise Exception("Cannot find an image viewer")
 
-    subprocess.run([viewer] + paths)
-
+    if v == 'chafa':  # terminal-based image viewers need extra help
+        for count, p in enumerate(paths, start=1):
+            size=os.get_terminal_size()  # check every time, user may resize
+            subprocess.run([viewer, '--clear', '--size', \
+                f'{size.columns}x{size.lines-2}', p ])
+ #           else: #tycat
+ #               subprocess.run([viewer, f'-g {size.columns}x{size.lines-2}'])
+            print(f'Displaying image {count} of {len(paths)}')
+            subprocess.run('''
+            read -p 'Press ENTER to continue.' -s; clear''',
+            shell=True,
+            executable='/bin/bash')
+    else:
+         subprocess.run([viewer] + paths)
 
 class LinkParser(HTMLParser):
 

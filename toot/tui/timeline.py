@@ -305,6 +305,8 @@ class StatusDetails(urwid.Pile):
             "[D]elete" if status.is_mine else "",
             "[F]avourite",
             "[V]iew",
+# hidden for now per @ihabanuek until user settings is implemented            
+#            "[M]edia" if status.has_media else "",
             "[T]hread" if not self.in_thread else "",
             "[L]inks",
             "[R]eply",

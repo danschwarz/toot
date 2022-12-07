@@ -188,6 +188,7 @@ class TUI(urwid.Frame):
 
         def _media(timeline, status):
             self.show_media(status)
+            self.loop.screen.clear()
 
         def _menu(timeline, status):
             self.show_context_menu(status)

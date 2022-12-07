@@ -55,6 +55,7 @@ class Status:
         self.url = data.get("url")
         self.mentions = data.get("mentions")
         self.reblog = self._get_reblog()
+        self.has_media = data.get("media_attachments",False)
 
     @property
     def original(self):
