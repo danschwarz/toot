@@ -4,6 +4,8 @@ import urwid
 from concurrent.futures import ThreadPoolExecutor
 
 from toot import api, config, __version__
+from toot.console import get_default_visibility
+from toot.exceptions import ApiError
 
 from .compose import StatusComposer
 from .constants import PALETTE
@@ -112,6 +114,7 @@ class TUI(urwid.Frame):
 
     def run(self):
         self.loop.set_alarm_in(0, lambda *args: self.async_load_instance())
+        self.loop.set_alarm_in(0, lambda *args: self.async_load_followed_tags())
         self.loop.set_alarm_in(0, lambda *args: self.async_load_timeline(
             is_initial=True, timeline_name="home"))
         self.loop.run()
@@ -196,6 +199,7 @@ class TUI(urwid.Frame):
         def _zoom(timeline, status_details):
             self.show_status_zoom(status_details)
 
+        urwid.connect_signal(timeline, "bookmark", self.async_toggle_bookmark)
         urwid.connect_signal(timeline, "compose", _compose)
         urwid.connect_signal(timeline, "delete", _delete)
         urwid.connect_signal(timeline, "favourite", self.async_toggle_favourite)
@@ -208,6 +212,7 @@ class TUI(urwid.Frame):
         urwid.connect_signal(timeline, "links", _links)
         urwid.connect_signal(timeline, "zoom", _zoom)
         urwid.connect_signal(timeline, "translate", self.async_translate)
+        urwid.connect_signal(timeline, "clear-screen", self.loop.screen.clear)
 
     def build_timeline(self, name, statuses, local):
         def _close(*args):
@@ -234,7 +239,7 @@ class TUI(urwid.Frame):
             self.loop.set_alarm_in(5, lambda *args: self.footer.clear_message())
             config.save_config(self.config)
 
-        timeline = Timeline(name, statuses, self.can_translate)
+        timeline = Timeline(name, statuses, self.can_translate, self.followed_tags)
 
         self.connect_default_timeline_signals(timeline)
         urwid.connect_signal(timeline, "next", _next)
@@ -263,8 +268,9 @@ class TUI(urwid.Frame):
         statuses = ancestors + [status] + descendants
         focus = len(ancestors)
 
-        timeline = Timeline("thread", statuses, self.can_translate, focus,
-                            is_thread=True)
+        timeline = Timeline("thread", statuses, self.can_translate,
+                            self.followed_tags, focus, is_thread=True)
+
         self.connect_default_timeline_signals(timeline)
         urwid.connect_signal(timeline, "close", _close)
 
@@ -331,6 +337,22 @@ class TUI(urwid.Frame):
 
         return self.run_in_thread(_load_instance, done_callback=_done)
 
+    def async_load_followed_tags(self):
+        def _load_tag_list():
+            try:
+                return api.followed_tags(self.app, self.user)
+            except ApiError:
+                # not supported by all Mastodon servers so fail silently if necessary
+                return []
+
+        def _done_tag_list(tags):
+            if len(tags) > 0:
+                self.followed_tags = [t["name"] for t in tags]
+            else:
+                self.followed_tags = []
+
+        self.run_in_thread(_load_tag_list, done_callback=_done_tag_list)
+
     def refresh_footer(self, timeline):
         """Show status details in footer."""
         status, index, count = timeline.get_focused_status_with_counts()
@@ -345,6 +367,9 @@ class TUI(urwid.Frame):
             title="Status source",
         )
 
+    def _clear_screen(self, widget):
+        self.loop.screen.clear()
+
     def show_links(self, status):
         links = parse_content_links(status.data["content"]) if status else []
         post_attachments = status.data["media_attachments"] or []
@@ -353,8 +378,10 @@ class TUI(urwid.Frame):
             url = a["remote_url"] or a["url"]
             links.append((url, a["description"] if a["description"] else url))
         if links:
+            sl_widget = StatusLinks(links)
+            urwid.connect_signal(sl_widget, "clear-screen", self._clear_screen)
             self.open_overlay(
-                widget=StatusLinks(links),
+                widget=sl_widget,
                 title="Status links",
                 options={"height": len(links) + 2},
             )
@@ -378,7 +405,7 @@ class TUI(urwid.Frame):
         def _post(timeline, *args):
             self.post_status(*args)
 
-        composer = StatusComposer(self.max_toot_chars, in_reply_to)
+        composer = StatusComposer(self.max_toot_chars, self.user.username, in_reply_to)
         urwid.connect_signal(composer, "close", _close)
         urwid.connect_signal(composer, "post", _post)
         self.open_overlay(composer, title="Compose status")
@@ -390,12 +417,15 @@ class TUI(urwid.Frame):
             lambda x: self.goto_home_timeline())
         urwid.connect_signal(menu, "public_timeline",
             lambda x, local: self.goto_public_timeline(local))
+        urwid.connect_signal(menu, "bookmark_timeline",
+            lambda x, local: self.goto_bookmarks())
+
         urwid.connect_signal(menu, "hashtag_timeline",
             lambda x, tag, local: self.goto_tag_timeline(tag, local=local))
 
         self.open_overlay(menu, title="Go to", options=dict(
             align="center", width=("relative", 60),
-            valign="middle", height=9 + len(user_timelines),
+            valign="middle", height=10 + len(user_timelines),
         ))
 
     def show_help(self):
@@ -411,6 +441,12 @@ class TUI(urwid.Frame):
         self.timeline_generator = api.public_timeline_generator(
             self.app, self.user, local=local, limit=40)
         promise = self.async_load_timeline(is_initial=True, timeline_name="public")
+        promise.add_done_callback(lambda *args: self.close_overlay())
+
+    def goto_bookmarks(self):
+        self.timeline_generator = api.bookmark_timeline_generator(
+            self.app, self.user, limit=40)
+        promise = self.async_load_timeline(is_initial=True, timeline_name="bookmarks")
         promise.add_done_callback(lambda *args: self.close_overlay())
 
     def goto_tag_timeline(self, tag, local):
@@ -484,7 +520,7 @@ class TUI(urwid.Frame):
     def async_toggle_reblog(self, timeline, status):
         def _reblog():
             logger.info("Reblogging {}".format(status))
-            api.reblog(self.app, self.user, status.id)
+            api.reblog(self.app, self.user, status.id, visibility=get_default_visibility())
 
         def _unreblog():
             logger.info("Unreblogging {}".format(status))
@@ -496,6 +532,13 @@ class TUI(urwid.Frame):
             new_data["reblogged"] = not status.reblogged
             new_status = self.make_status(new_data)
             timeline.update_status(new_status)
+
+        # Check if status is rebloggable
+        no_reblog_because_private = status.visibility == "private" and not status.is_mine
+        no_reblog_because_direct = status.visibility == "direct"
+        if no_reblog_because_private or no_reblog_because_direct:
+            self.footer.set_error_message("You may not reblog this {} status".format(status.visibility))
+            return
 
         self.run_in_thread(
             _unreblog if status.reblogged else _reblog,
@@ -514,7 +557,7 @@ class TUI(urwid.Frame):
                 else:
                     self.footer.set_error_message("Server returned empty translation")
                     response = None
-            except:
+            except Exception:
                 response = None
                 self.footer.set_error_message("Translate server error")
 
@@ -534,6 +577,27 @@ class TUI(urwid.Frame):
             timeline.update_status(status)
         else:
             self.run_in_thread(_translate, done_callback=_done)
+
+    def async_toggle_bookmark(self, timeline, status):
+        def _bookmark():
+            logger.info("Bookmarking {}".format(status))
+            api.bookmark(self.app, self.user, status.id)
+
+        def _unbookmark():
+            logger.info("Unbookmarking {}".format(status))
+            api.unbookmark(self.app, self.user, status.id)
+
+        def _done(loop):
+            # Create a new Status with flipped bookmarked flag
+            new_data = status.data
+            new_data["bookmarked"] = not status.bookmarked
+            new_status = self.make_status(new_data)
+            timeline.update_status(new_status)
+
+        self.run_in_thread(
+            _unbookmark if status.bookmarked else _bookmark,
+            done_callback=_done
+        )
 
     def async_delete_status(self, timeline, status):
         def _delete():

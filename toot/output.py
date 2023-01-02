@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import re
 import sys
@@ -196,6 +194,14 @@ def highlight_hashtags(line):
 def print_acct_list(accounts):
     for account in accounts:
         print_out(f"* <green>@{account['acct']}</green> {account['display_name']}")
+
+
+def print_tag_list(tags):
+    if tags:
+        for tag in tags:
+            print_out(f"* <green>#{tag['name']}\t</green>{tag['url']}")
+    else:
+        print_out("You're not following any hashtags.")
 
 
 def print_search_results(results):
