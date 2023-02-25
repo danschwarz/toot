@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import io
 import pytest
 import re
@@ -134,7 +133,7 @@ def test_timeline(mock_get, monkeypatch, capsys):
 
     console.run_command(app, user, 'timeline', ['--once'])
 
-    mock_get.assert_called_once_with(app, user, '/api/v1/timelines/home?limit=10', None)
+    mock_get.assert_called_once_with(app, user, '/api/v1/timelines/home', {'limit': 10})
 
     out, err = capsys.readouterr()
     lines = out.split("\n")
@@ -175,7 +174,7 @@ def test_timeline_with_re(mock_get, monkeypatch, capsys):
 
     console.run_command(app, user, 'timeline', ['--once'])
 
-    mock_get.assert_called_once_with(app, user, '/api/v1/timelines/home?limit=10', None)
+    mock_get.assert_called_once_with(app, user, '/api/v1/timelines/home', {'limit': 10})
 
     out, err = capsys.readouterr()
     lines = out.split("\n")
@@ -458,7 +457,8 @@ def test_whoami(mock_get, capsys):
         'note': 'A developer.',
         'statuses_count': 19,
         'url': 'https://mastodon.social/@ihabunek',
-        'username': 'ihabunek'
+        'username': 'ihabunek',
+        'fields': []
     })
 
     console.run_command(app, user, 'whoami', [])

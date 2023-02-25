@@ -1,8 +1,13 @@
 import json
+import sys
 
 from logging import getLogger
+from requests import Request, Response
+from urllib.parse import urlencode
 
-logger = getLogger('toot')
+logger = getLogger("toot")
+
+VERBOSE = "--verbose" in sys.argv
 
 
 def censor_secrets(headers):
@@ -14,34 +19,45 @@ def censor_secrets(headers):
     return {_censor(k, v) for k, v in headers.items()}
 
 
-def log_request(request):
-    logger.debug(">>> \033[32m{} {}\033[0m".format(request.method, request.url))
+def truncate(line):
+    if not VERBOSE and len(line) > 100:
+        return line[:100] + "…"
 
-    if request.headers:
+    return line
+
+
+def log_request(request: Request):
+    logger.debug(f" --> {request.method} {_url(request)}")
+
+    if VERBOSE and request.headers:
         headers = censor_secrets(request.headers)
-        logger.debug(">>> HEADERS: \033[33m{}\033[0m".format(headers))
+        logger.debug(f" --> HEADERS: {headers}")
 
-    if request.data:
-        logger.debug(">>> DATA:    \033[33m{}\033[0m".format(request.data))
+    if VERBOSE and request.data:
+        data = truncate(request.data)
+        logger.debug(f" --> DATA:    {data}")
 
-    if request.json:
-        logger.debug(">>> JSON:    \033[33m{}\033[0m".format(json.dumps(request.json)))
+    if VERBOSE and request.json:
+        data = truncate(json.dumps(request.json))
+        logger.debug(f" --> JSON:    {data}")
 
-    if request.files:
-        logger.debug(">>> FILES:   \033[33m{}\033[0m".format(request.files))
+    if VERBOSE and request.files:
+        logger.debug(f" --> FILES:   {request.files}")
 
+
+def log_response(response: Response):
+    method = response.request.method
+    url = response.request.url
+    elapsed = response.elapsed.microseconds // 1000
+    logger.debug(f" <-- {method} {url} HTTP {response.status_code} {elapsed}ms")
+
+    if VERBOSE and response.content:
+        content = truncate(response.content.decode())
+        logger.debug(f" <-- {content}")
+
+
+def _url(request):
+    url = request.url
     if request.params:
-        logger.debug(">>> PARAMS:  \033[33m{}\033[0m".format(request.params))
-
-
-def log_response(response):
-    if response.ok:
-        logger.debug("<<< \033[32m{}\033[0m".format(response))
-        logger.debug("<<< \033[33m{}\033[0m".format(response.content.decode()))
-    else:
-        logger.debug("<<< \033[31m{}\033[0m".format(response))
-        logger.debug("<<< \033[31m{}\033[0m".format(response.content.decode()))
-
-
-def log_debug(*msgs):
-    logger.debug(" ".join(str(m) for m in msgs))
+        url += f"?{urlencode(request.params)}"
+    return url

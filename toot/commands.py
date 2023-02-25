@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import sys
 import platform
 
@@ -8,9 +6,10 @@ from toot import api, config, __version__
 from toot.auth import login_interactive, login_browser_interactive, create_app_interactive
 from toot.exceptions import ApiError, ConsoleError
 from toot.output import (print_out, print_instance, print_account, print_acct_list,
-                         print_search_results, print_timeline, print_notifications)
+                         print_search_results, print_timeline, print_notifications,
+                         print_tag_list)
 from toot.tui.utils import parse_datetime
-from toot.utils import editor_input, multiline_input, EOF_KEY
+from toot.utils import delete_tmp_status_file, editor_input, multiline_input, EOF_KEY
 
 
 def get_timeline_generator(app, user, args):
@@ -40,10 +39,11 @@ def get_timeline_generator(app, user, args):
         return api.home_timeline_generator(app, user, limit=args.count)
 
 
-def timeline(app, user, args):
-    generator = get_timeline_generator(app, user, args)
+def timeline(app, user, args, generator=None):
+    if not generator:
+        generator = get_timeline_generator(app, user, args)
 
-    while(True):
+    while True:
         try:
             items = next(generator)
         except StopIteration:
@@ -111,6 +111,8 @@ def post(app, user, args):
     else:
         print_out(f"Toot posted: <green>{response['url']}")
 
+    delete_tmp_status_file()
+
 
 def _get_status_text(text, editor):
     isatty = sys.stdin.isatty()
@@ -169,7 +171,7 @@ def unfavourite(app, user, args):
 
 
 def reblog(app, user, args):
-    api.reblog(app, user, args.status_id)
+    api.reblog(app, user, args.status_id, visibility=args.visibility)
     print_out("<green>✓ Status reblogged</green>")
 
 
@@ -196,6 +198,10 @@ def bookmark(app, user, args):
 def unbookmark(app, user, args):
     api.unbookmark(app, user, args.status_id)
     print_out("<green>✓ Status unbookmarked</green>")
+
+
+def bookmarks(app, user, args):
+    timeline(app, user, args, api.bookmark_timeline_generator(app, user, limit=args.count))
 
 
 def reblogged_by(app, user, args):
@@ -225,6 +231,41 @@ def env(app, user, args):
     print_out(f"toot {__version__}")
     print_out(f"Python {sys.version}")
     print_out(platform.platform())
+
+
+def update_account(app, user, args):
+    options = [
+        args.avatar,
+        args.bot,
+        args.discoverable,
+        args.display_name,
+        args.header,
+        args.language,
+        args.locked,
+        args.note,
+        args.privacy,
+        args.sensitive,
+    ]
+
+    if all(option is None for option in options):
+        raise ConsoleError("Please specify at least one option to update the account")
+
+    api.update_account(
+        app,
+        user,
+        avatar=args.avatar,
+        bot=args.bot,
+        discoverable=args.discoverable,
+        display_name=args.display_name,
+        header=args.header,
+        language=args.language,
+        locked=args.locked,
+        note=args.note,
+        privacy=args.privacy,
+        sensitive=args.sensitive,
+    )
+
+    print_out("<green>✓ Account updated</green>")
 
 
 def login_cli(app, user, args):
@@ -323,6 +364,23 @@ def followers(app, user, args):
     print_acct_list(response)
 
 
+def tags_follow(app, user, args):
+    tn = args.tag_name if not args.tag_name.startswith("#") else args.tag_name[1:]
+    api.follow_tag(app, user, tn)
+    print_out("<green>✓ You are now following #{}</green>".format(tn))
+
+
+def tags_unfollow(app, user, args):
+    tn = args.tag_name if not args.tag_name.startswith("#") else args.tag_name[1:]
+    api.unfollow_tag(app, user, tn)
+    print_out("<green>✓ You are no longer following #{}</green>".format(tn))
+
+
+def tags_followed(app, user, args):
+    response = api.followed_tags(app, user)
+    print_tag_list(response)
+
+
 def mute(app, user, args):
     account = _find_account(app, user, args.account)
     api.mute(app, user, account['id'])
@@ -396,4 +454,4 @@ def notifications(app, user, args):
 
 def tui(app, user, args):
     from .tui.app import TUI
-    TUI.create(app, user).run()
+    TUI.create(app, user, args).run()

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import re
 import socket
@@ -16,6 +14,11 @@ from toot.exceptions import ConsoleError
 def str_bool(b):
     """Convert boolean to string, in the way expected by the API."""
     return "true" if b else "false"
+
+
+def str_bool_nullable(b):
+    """Similar to str_bool, but leave None as None"""
+    return None if b is None else str_bool(b)
 
 
 def get_text(html):
@@ -41,7 +44,7 @@ def parse_html(html):
     paragraphs = [re.split("<br */?>", p) for p in paragraphs if p]
 
     # Convert each line in each paragraph to plain text:
-    return [[get_text(l) for l in p] for p in paragraphs]
+    return [[get_text(line) for line in p] for p in paragraphs]
 
 
 def format_content(content):
@@ -102,17 +105,52 @@ Everything below it will be ignored.
 """
 
 
-def editor_input(editor, initial_text):
+def editor_input(editor: str, initial_text: str):
     """Lets user input text using an editor."""
+    tmp_path = _tmp_status_path()
     initial_text = (initial_text or "") + EDITOR_INPUT_INSTRUCTIONS
 
-    with tempfile.NamedTemporaryFile(suffix='.toot') as f:
-        f.write(initial_text.encode())
-        f.flush()
+    if not _use_existing_tmp_file(tmp_path):
+        with open(tmp_path, "w") as f:
+            f.write(initial_text)
+            f.flush()
 
-        subprocess.run([editor, f.name])
+    subprocess.run([editor, tmp_path])
 
-        f.seek(0)
-        text = f.read().decode()
+    with open(tmp_path) as f:
+        return f.read().split(EDITOR_DIVIDER)[0].strip()
 
-    return text.split(EDITOR_DIVIDER)[0].strip()
+
+def read_char(values, default):
+    values = [v.lower() for v in values]
+
+    while True:
+        value = input().lower()
+        if value == "":
+            return default
+        if value in values:
+            return value
+
+
+def delete_tmp_status_file():
+    try:
+        os.unlink(_tmp_status_path())
+    except FileNotFoundError:
+        pass
+
+
+def _tmp_status_path() -> str:
+    tmp_dir = tempfile.gettempdir()
+    return f"{tmp_dir}/.status.toot"
+
+
+def _use_existing_tmp_file(tmp_path) -> bool:
+    from toot.output import print_out
+
+    if os.path.exists(tmp_path):
+        print_out(f"<cyan>Found a draft status at: {tmp_path}</cyan>")
+        print_out("<cyan>[O]pen (default) or [D]elete?</cyan> ", end="")
+        char = read_char(["o", "d"], "o")
+        return char == "o"
+
+    return False

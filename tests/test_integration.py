@@ -35,6 +35,9 @@ HOSTNAME = os.getenv("TOOT_TEST_HOSTNAME")
 # Mastodon database name, used to confirm user registration without having to click the link
 DATABASE_DSN = os.getenv("TOOT_TEST_DATABASE_DSN")
 
+# Toot logo used for testing image upload
+TRUMPET = path.join(path.dirname(path.dirname(path.realpath(__file__))), "trumpet.png")
+
 
 if not HOSTNAME or not DATABASE_DSN:
     pytest.skip("Skipping integration tests", allow_module_level=True)
@@ -429,6 +432,190 @@ def test_follow_not_found(run):
     with pytest.raises(ConsoleError) as ex_info:
         run("follow", "banana")
     assert str(ex_info.value) == "Account not found"
+
+
+def test_mute(app, user, friend, run):
+    out = run("mute", friend.username)
+    assert out == f"✓ You have muted {friend.username}"
+
+    [muted_account] = api.get_muted_accounts(app, user)
+    assert muted_account["acct"] == friend.username
+
+    out = run("unmute", friend.username)
+    assert out == f"✓ {friend.username} is no longer muted"
+
+    assert api.get_muted_accounts(app, user) == []
+
+
+def test_block(app, user, friend, run):
+    out = run("block", friend.username)
+    assert out == f"✓ You are now blocking {friend.username}"
+
+    [blockd_account] = api.get_blocked_accounts(app, user)
+    assert blockd_account["acct"] == friend.username
+
+    out = run("unblock", friend.username)
+    assert out == f"✓ {friend.username} is no longer blocked"
+
+    assert api.get_blocked_accounts(app, user) == []
+
+
+def test_following_followers(user, friend, run):
+    out = run("following", user.username)
+    assert out == ""
+
+    run("follow", friend.username)
+
+    out = run("following", user.username)
+    assert out == f"* @{friend.username}"
+
+    out = run("followers", friend.username)
+    assert out == f"* @{user.username}"
+
+
+def test_tags(run):
+    out = run("tags_followed")
+    assert out == "You're not following any hashtags."
+
+    out = run("tags_follow", "foo")
+    assert out == "✓ You are now following #foo"
+
+    out = run("tags_followed")
+    assert out == "* #foo\thttp://localhost:3000/tags/foo"
+
+    out = run("tags_follow", "bar")
+    assert out == "✓ You are now following #bar"
+
+    out = run("tags_followed")
+    assert out == "\n".join([
+        "* #bar\thttp://localhost:3000/tags/bar",
+        "* #foo\thttp://localhost:3000/tags/foo",
+    ])
+
+    out = run("tags_unfollow", "foo")
+    assert out == "✓ You are no longer following #foo"
+
+    out = run("tags_followed")
+    assert out == "* #bar\thttp://localhost:3000/tags/bar"
+
+
+def test_update_account_no_options(run):
+    with pytest.raises(ConsoleError) as exc:
+        run("update_account")
+    assert str(exc.value) == "Please specify at least one option to update the account"
+
+
+def test_update_account_display_name(run, app, user):
+    out = run("update_account", "--display-name", "elwood")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["display_name"] == "elwood"
+
+
+def test_update_account_note(run, app, user):
+    note = ("It's 106 miles to Chicago, we got a full tank of gas, half a pack "
+           "of cigarettes, it's dark... and we're wearing sunglasses.")
+
+    out = run("update_account", "--note", note)
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert get_text(account["note"]) == note
+
+
+def test_update_account_language(run, app, user):
+    out = run("update_account", "--language", "hr")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["source"]["language"] == "hr"
+
+
+def test_update_account_privacy(run, app, user):
+    out = run("update_account", "--privacy", "private")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["source"]["privacy"] == "private"
+
+
+def test_update_account_avatar(run, app, user):
+    account = api.verify_credentials(app, user)
+    old_value = account["avatar"]
+
+    out = run("update_account", "--avatar", TRUMPET)
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["avatar"] != old_value
+
+
+def test_update_account_header(run, app, user):
+    account = api.verify_credentials(app, user)
+    old_value = account["header"]
+
+    out = run("update_account", "--header", TRUMPET)
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["header"] != old_value
+
+
+def test_update_account_locked(run, app, user):
+    out = run("update_account", "--locked")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["locked"] is True
+
+    out = run("update_account", "--no-locked")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["locked"] is False
+
+
+def test_update_account_bot(run, app, user):
+    out = run("update_account", "--bot")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["bot"] is True
+
+    out = run("update_account", "--no-bot")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["bot"] is False
+
+
+def test_update_account_discoverable(run, app, user):
+    out = run("update_account", "--discoverable")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["discoverable"] is True
+
+    out = run("update_account", "--no-discoverable")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["discoverable"] is False
+
+
+def test_update_account_sensitive(run, app, user):
+    out = run("update_account", "--sensitive")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["source"]["sensitive"] is True
+
+    out = run("update_account", "--no-sensitive")
+    assert out == "✓ Account updated"
+
+    account = api.verify_credentials(app, user)
+    assert account["source"]["sensitive"] is False
 
 
 # ------------------------------------------------------------------------------
