@@ -482,6 +482,10 @@ POST_COMMANDS = [
                 "help": "plain-text description of the media for accessibility "
                         "purposes, one per attached media"
             }),
+            (["--edit-id"], {
+                "type": str,
+                "help": "Local ID of a status to edit"
+            }),
             visibility_arg,
             (["-s", "--sensitive"], {
                 "action": 'store_true',

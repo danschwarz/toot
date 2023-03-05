@@ -9,7 +9,7 @@ from toot.output import (print_out, print_instance, print_account, print_acct_li
                          print_search_results, print_timeline, print_notifications,
                          print_tag_list)
 from toot.tui.utils import parse_datetime
-from toot.utils import delete_tmp_status_file, editor_input, multiline_input, EOF_KEY
+from toot.utils import delete_tmp_status_file, editor_input, multiline_input, EOF_KEY, format_content
 
 
 def get_timeline_generator(app, user, args):
@@ -86,23 +86,44 @@ def post(app, user, args):
         raise ConsoleError("Cannot attach more than 4 files.")
 
     media_ids = _upload_media(app, user, args)
-    status_text = _get_status_text(args.text, args.editor)
+
+    if hasattr(args, 'edit_id'):
+        status = api.fetch_status(app, user, args.edit_id)
+        if status:
+            content = status.data["content"]
+            status_text ='\n'.join(format_content(content))
+    else:
+        status_text = _get_status_text(args.text, args.editor)
     scheduled_at = _get_scheduled_at(args.scheduled_at, args.scheduled_in)
 
     if not status_text and not media_ids:
         raise ConsoleError("You must specify either text or media to post.")
 
-    response = api.post_status(
-        app, user, status_text,
-        visibility=args.visibility,
-        media_ids=media_ids,
-        sensitive=args.sensitive,
-        spoiler_text=args.spoiler_text,
-        in_reply_to_id=args.reply_to,
-        language=args.language,
-        scheduled_at=scheduled_at,
-        content_type=args.content_type
-    )
+    if hasattr(args, 'edit_id'):   # edit existing status
+        response = api.edit_status(
+            app, user, args.text,
+            edit_id=args.edit_id,
+            visibility=args.visibility,
+            media_ids=media_ids,
+            sensitive=args.sensitive,
+            spoiler_text=args.spoiler_text,
+            in_reply_to_id=args.reply_to,
+            language=args.language,
+            scheduled_at=args.scheduled_at,
+            content_type=args.content_type
+        )
+    else:
+        response = api.post_status(
+            app, user, args.text,
+            visibility=args.visibility,
+            media_ids=media_ids,
+            sensitive=args.sensitive,
+            spoiler_text=args.spoiler_text,
+            in_reply_to_id=args.reply_to,
+            language=args.language,
+            scheduled_at=args.scheduled_at,
+            content_type=args.content_type
+        )
 
     if "scheduled_at" in response:
         scheduled_at = parse_datetime(response["scheduled_at"])

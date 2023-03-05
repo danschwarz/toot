@@ -217,6 +217,46 @@ def scheduled_statuses(app, user):
     return http.get(app, user, "/api/v1/scheduled_statuses").json()
 
 
+def edit_status(
+    app,
+    user,
+    edited_status,
+    edit_id,
+    visibility='public',
+    media_ids=None,
+    sensitive=False,
+    spoiler_text=None,
+    in_reply_to_id=None,
+    language=None,
+    scheduled_at=None,
+    content_type=None,
+):
+    """
+    Edits an existing status.
+    https://docs.joinmastodon.org/methods/statuses/#edit
+    """
+
+    # Idempotency key assures the same status is not posted multiple times
+    # if the request is retried.
+    # headers = {"Idempotency-Key": uuid.uuid4().hex}
+
+    params = {
+        'status': edited_status,
+        'media_ids[]': media_ids,
+        'visibility': visibility,
+        'sensitive': str_bool(sensitive),
+        'spoiler_text': spoiler_text,
+        'in_reply_to_id': in_reply_to_id,
+        'language': language,
+        'scheduled_at': scheduled_at
+    }
+
+    if content_type:
+        params['content_type'] = content_type
+
+    return http.put(app, user, '/api/v1/statuses/{}'.format(edit_id), params).json()
+
+
 def delete_status(app, user, status_id):
     """
     Deletes a status with given ID.

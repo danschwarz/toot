@@ -64,6 +64,16 @@ def get(app, user, path, params=None, headers=None):
     return process_response(response)
 
 
+def put(app, user, url, params=None):
+    url = app.base_url + url
+    headers = {"Authorization": "Bearer " + user.access_token}
+
+    request = Request('PUT', url, headers, params=params)
+    response = send_request(request)
+
+    return process_response(response)
+
+
 def anon_get(url, params=None):
     request = Request('GET', url, None, params=params)
     response = send_request(request)
