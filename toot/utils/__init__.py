@@ -1,5 +1,6 @@
 import os
 import re
+import readline
 import socket
 import subprocess
 import tempfile

@@ -90,10 +90,12 @@ def post(app, user, args):
     if hasattr(args, 'edit_id'):
         status = api.fetch_status(app, user, args.edit_id)
         if status:
-            content = status.data["content"]
+            content = status["content"]
             status_text ='\n'.join(format_content(content))
+            status_text = _get_status_text(status_text, args.editor, edit=True)
     else:
         status_text = _get_status_text(args.text, args.editor)
+
     scheduled_at = _get_scheduled_at(args.scheduled_at, args.scheduled_in)
 
     if not status_text and not media_ids:
@@ -135,7 +137,7 @@ def post(app, user, args):
     delete_tmp_status_file()
 
 
-def _get_status_text(text, editor):
+def _get_status_text(text, editor, edit=False):
     isatty = sys.stdin.isatty()
 
     if not text and not isatty:
@@ -144,7 +146,13 @@ def _get_status_text(text, editor):
     if isatty:
         if editor:
             text = editor_input(editor, text)
-        elif not text:
+        elif edit or not text:
+            if (edit):
+                print_out("<yellow>Original toot:</yellow>")
+                print_out("")
+                print_out(text)
+                print_out("")
+                print_out ("---------------------------------------------------------")
             print_out("Write or paste your toot. Press <yellow>{}</yellow> to post it.".format(EOF_KEY))
             text = multiline_input()
 
