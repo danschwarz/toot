@@ -20,7 +20,7 @@ class Status:
         If a reblog, the reblogged status, otherwise self.
     """
 
-    def __init__(self, data, is_mine, default_instance):
+    def __init__(self, data, is_mine, default_instance, foreign_instance=None):
         """
         Parameters
         ----------
@@ -35,11 +35,16 @@ class Status:
             The domain of the instance into which the user is logged in. Used to
             create fully qualified account names for users on the same instance.
             Mastodon only populates the name, not the domain.
+
+        foreign_instance : dict
+            Instance data for the foreign (non-logged-in) instance
+            as received from Mastodon
         """
 
         self.data = data
         self.is_mine = is_mine
         self.default_instance = default_instance
+        self.foreign_instance = foreign_instance
 
         # This can be toggled by the user
         self.show_sensitive = False
@@ -78,13 +83,13 @@ class Status:
         return Status(reblog, reblog_is_mine, self.default_instance)
 
     def _get_author(self):
-        acct = self.data['account']['acct']
-        acct = acct if "@" in acct else "{}@{}".format(acct, self.default_instance)
+        acct = self._get_account()
         return Author(acct, self.data['account']['display_name'], self.data['account']['username'])
 
     def _get_account(self):
         acct = self.data['account']['acct']
-        return acct if "@" in acct else "{}@{}".format(acct, self.default_instance)
+        which_instance = self.default_instance if self.foreign_instance is None else self.foreign_instance["uri"]
+        return acct if "@" in acct else "{}@{}".format(acct, which_instance)
 
     def __repr__(self):
         return "<Status id={} account={}>".format(self.id, self.account)
