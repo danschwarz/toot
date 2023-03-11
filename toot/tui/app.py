@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from toot import api, config, __version__
 from toot.console import get_default_visibility
 from toot.exceptions import ApiError
-from toot.commands import find_account
 
 from .compose import StatusComposer
 from .constants import PALETTE
@@ -180,8 +179,8 @@ class TUI(urwid.Frame):
         return future
 
     def connect_default_timeline_signals(self, timeline):
-        def _account(timeline, account_id):
-            self.show_account(account_id)
+        def _account(timeline, account_name):
+            self.show_account(account_name)
 
         def _compose(*args):
             self.show_compose()
@@ -270,9 +269,9 @@ class TUI(urwid.Frame):
 
         return timeline
 
-    def make_status(self, status_data):
+    def make_status(self, status_data, foreign_instance=None):
         is_mine = self.user.username == status_data["account"]["acct"]
-        return Status(status_data, is_mine, self.app.instance)
+        return Status(status_data, is_mine, self.app.instance, foreign_instance=foreign_instance)
 
     def show_thread(self, status):
         def _close(*args):
@@ -298,7 +297,7 @@ class TUI(urwid.Frame):
         self.body = timeline
         self.refresh_footer(timeline)
 
-    def async_load_timeline(self, is_initial, timeline_name=None, local=None):
+    def async_load_timeline(self, is_initial, timeline_name=None, local=None, foreign_instance=None):
         """Asynchronously load a list of statuses."""
 
         def _load_statuses():
@@ -310,7 +309,7 @@ class TUI(urwid.Frame):
             finally:
                 self.footer.clear_message()
 
-            return [self.make_status(s) for s in data]
+            return [self.make_status(s, foreign_instance=foreign_instance) for s in data]
 
         def _done_initial(statuses):
             """Process initial batch of statuses, construct a Timeline."""
@@ -363,7 +362,7 @@ class TUI(urwid.Frame):
         def _load_accounts():
             try:
                 acct = f'@{self.user.username}@{self.user.instance}'
-                self.account = find_account(self.app, self.user, acct)
+                self.account = api.find_account(self.app, self.user, acct)
                 return api.following(self.app, self.user, self.account["id"])
             except ApiError:
                 # not supported by all Mastodon servers so fail silently if necessary
@@ -460,7 +459,7 @@ class TUI(urwid.Frame):
         urwid.connect_signal(menu, "home_timeline",
             lambda x: self.goto_home_timeline())
         urwid.connect_signal(menu, "public_timeline",
-            lambda x, local: self.goto_public_timeline(local))
+            lambda x, local, foreign_instance: self.goto_public_timeline(local, foreign_instance))
         urwid.connect_signal(menu, "bookmark_timeline",
             lambda x, local: self.goto_bookmarks())
         urwid.connect_signal(menu, "notification_timeline",
@@ -495,6 +494,20 @@ class TUI(urwid.Frame):
             self.app, self.user, local=local, limit=40)
         promise = self.async_load_timeline(is_initial=True, timeline_name="public")
         promise.add_done_callback(lambda *args: self.close_overlay())
+
+    def goto_public_timeline(self, local, foreign_instance=None):
+        if foreign_instance:
+            self.timeline_generator = api.anon_public_timeline_generator(
+                foreign_instance["uri"], local=True, limit=40)
+            tl_name = foreign_instance["uri"]
+        else:
+            tl_name = "local" if local else "global"
+            self.timeline_generator = api.public_timeline_generator(
+                self.app, self.user, local=local, limit=40)
+
+        promise = self.async_load_timeline(is_initial=True,
+            timeline_name=f"\N{Globe with Meridians}{tl_name}",
+            local=False, foreign_instance=foreign_instance)
 
     def goto_bookmarks(self):
         self.timeline_generator = api.bookmark_timeline_generator(
@@ -562,13 +575,17 @@ class TUI(urwid.Frame):
         self.footer.set_message("Status posted {} \\o/".format(status.id))
         self.close_overlay()
 
-    def show_account(self, account_id):
-        account = api.whois(self.app, self.user, account_id)
-        relationship = api.get_relationship(self.app, self.user, account_id)
-        self.open_overlay(
-            widget=Account(self.app, self.user, account, relationship),
-            title="Account",
-        )
+    def show_account(self, account_name):
+        try:
+            account = api.find_account(self.app, self.user, account_name)
+            relationship = api.get_relationship(self.app, self.user, account['id'])
+            self.open_overlay(
+                widget=Account(self.app, self.user, account, relationship),
+                title="Account",
+            )
+        except ApiError:
+            self.footer.set_error_message(f"Couldn't find account {account_name}")
+            self.loop.set_alarm_in(3, lambda *args: self.footer.clear_message())
 
     def async_toggle_favourite(self, timeline, status):
         def _favourite():
