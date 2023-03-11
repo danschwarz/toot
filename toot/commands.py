@@ -359,49 +359,35 @@ def _do_upload(app, user, file, description, thumbnail):
     return api.upload_media(app, user, file, description=description, thumbnail=thumbnail)
 
 
-def find_account(app, user, account_name):
+def _find_account(app, user, account_name):
+    try:
+        return api.find_account(app, user, account_name)
+    except ApiError:
+        raise ConsoleError(f"Account not found: {account_name}")
     if not account_name:
         raise ConsoleError("Empty account name given")
 
-    normalized_name = account_name.lstrip("@").lower()
-
-    # Strip @<instance_name> from accounts on the local instance. The `acct`
-    # field in account object contains the qualified name for users of other
-    # instances, but only the username for users of the local instance. This is
-    # required in order to match the account name below.
-    if "@" in normalized_name:
-        [username, instance] = normalized_name.split("@", maxsplit=1)
-        if instance == app.instance:
-            normalized_name = username
-
-    response = api.search(app, user, account_name, type="accounts", resolve=True)
-    for account in response["accounts"]:
-        if account["acct"].lower() == normalized_name:
-            return account
-
-    raise ConsoleError("Account not found")
-
 
 def follow(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     api.follow(app, user, account['id'])
     print_out("<green>✓ You are now following {}</green>".format(args.account))
 
 
 def unfollow(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     api.unfollow(app, user, account['id'])
     print_out("<green>✓ You are no longer following {}</green>".format(args.account))
 
 
 def following(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     response = api.following(app, user, account['id'])
     print_acct_list(response)
 
 
 def followers(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     response = api.followers(app, user, account['id'])
     print_acct_list(response)
 
@@ -424,25 +410,25 @@ def tags_followed(app, user, args):
 
 
 def mute(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     api.mute(app, user, account['id'])
     print_out("<green>✓ You have muted {}</green>".format(args.account))
 
 
 def unmute(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     api.unmute(app, user, account['id'])
     print_out("<green>✓ {} is no longer muted</green>".format(args.account))
 
 
 def block(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     api.block(app, user, account['id'])
     print_out("<green>✓ You are now blocking {}</green>".format(args.account))
 
 
 def unblock(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     api.unblock(app, user, account['id'])
     print_out("<green>✓ {} is no longer blocked</green>".format(args.account))
 
@@ -453,7 +439,7 @@ def whoami(app, user, args):
 
 
 def whois(app, user, args):
-    account = find_account(app, user, args.account)
+    account = _find_account(app, user, args.account)
     print_account(account)
 
 
