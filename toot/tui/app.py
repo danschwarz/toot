@@ -473,10 +473,10 @@ class TUI(urwid.Frame):
         urwid.connect_signal(menu, "hashtag_timeline",
             lambda x, tag, local: self.goto_tag_timeline(tag, local=local))
 
+        overlay_height = 19 + len(user_timelines) if len(user_timelines) else 17
         self.open_overlay(menu, title="Go to", options=dict(
             align="center", width=("relative", 60),
-            valign="middle", height=11 + len(user_timelines),
-        ))
+            valign="middle", height=overlay_height))
 
     def show_help(self):
         self.open_overlay(Help(), title="Help")
