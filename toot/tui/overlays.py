@@ -1,5 +1,4 @@
 import json
-import re
 import traceback
 import urwid
 import webbrowser
@@ -149,7 +148,7 @@ class GotoMenu(urwid.ListBox):
 
         def _server(local):
             base_url = self.get_server()
-            if base_url: # and re.match(base_url, r"http[s]*\S+"):  # sanity check
+            if base_url:  # and re.match(base_url, r"http[s]*\S+"):  # sanity check
                 self.message_widget.set_text("")
                 try:
                     instance = api.get_instance(base_url)

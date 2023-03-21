@@ -241,8 +241,8 @@ class TUI(urwid.Frame):
         def _next(*args):
             self.async_load_timeline(is_initial=False)
 
-        def _thread(timeline, status):
-            self.show_thread(status)
+        def _thread(timeline, status, foreign_instance):
+            self.show_thread(status, foreign_instance)
 
         def _toggle_save(timeline, status):
             if not timeline.name.startswith("#"):
@@ -273,7 +273,7 @@ class TUI(urwid.Frame):
         is_mine = self.user.username == status_data["account"]["acct"]
         return Status(status_data, is_mine, self.app.instance, foreign_instance=foreign_instance)
 
-    def show_thread(self, status):
+    def show_thread(self, status, foreign_instance=None):
         def _close(*args):
             """When thread is closed, go back to the main timeline."""
             self.body = self.timeline
@@ -282,7 +282,11 @@ class TUI(urwid.Frame):
 
         # This is pretty fast, so it's probably ok to block while context is
         # loaded, can be made async later if needed
-        context = api.context(self.app, self.user, status.original.id)
+        if foreign_instance:
+            context = api.anon_context(foreign_instance["uri"], status.original.id)
+        else:
+            context = api.context(self.app, self.user, status.original.id)
+
         ancestors = [self.make_status(s) for s in context["ancestors"]]
         descendants = [self.make_status(s) for s in context["descendants"]]
         statuses = ancestors + [status] + descendants
@@ -489,12 +493,6 @@ class TUI(urwid.Frame):
         promise = self.async_load_timeline(is_initial=True, timeline_name="home")
         promise.add_done_callback(lambda *args: self.close_overlay())
 
-    def goto_public_timeline(self, local):
-        self.timeline_generator = api.public_timeline_generator(
-            self.app, self.user, local=local, limit=40)
-        promise = self.async_load_timeline(is_initial=True, timeline_name="public")
-        promise.add_done_callback(lambda *args: self.close_overlay())
-
     def goto_public_timeline(self, local, foreign_instance=None):
         if foreign_instance:
             self.timeline_generator = api.anon_public_timeline_generator(
@@ -508,6 +506,7 @@ class TUI(urwid.Frame):
         promise = self.async_load_timeline(is_initial=True,
             timeline_name=f"\N{Globe with Meridians}{tl_name}",
             local=False, foreign_instance=foreign_instance)
+        promise.add_done_callback(lambda *args: self.close_overlay())
 
     def goto_bookmarks(self):
         self.timeline_generator = api.bookmark_timeline_generator(

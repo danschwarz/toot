@@ -244,7 +244,7 @@ class Timeline(urwid.Columns):
             return
 
         if key in ("t", "T"):
-            self._emit("thread", status)
+            self._emit("thread", status, status.foreign_instance)
             return
 
         if key in ("u", "U"):
