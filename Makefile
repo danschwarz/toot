@@ -32,7 +32,7 @@ docs-serve:
 	mdbook serve --port 8000
 
 docs-deploy: docs
-	rsync --archive --compress --delete --stats book/ bezdomni:web/toot
+	rsync --archive --compress --delete --stats book/ bigfish:/var/www/toot/
 
 .PHONY: bundle
 bundle:
